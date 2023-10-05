@@ -3,6 +3,7 @@
 from flask import Flask, make_response, jsonify, request, session
 from flask_migrate import Migrate
 from flask_restful import Api, Resource
+from flask_sqlalchemy import SQLAlchemy
 
 from models import db, Article, User
 
@@ -17,6 +18,23 @@ migrate = Migrate(app, db)
 db.init_app(app)
 
 api = Api(app)
+
+
+db = SQLAlchemy()
+
+class Article(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(255), nullable=False)
+    content = db.Column(db.Text, nullable=False)
+    is_member_only = db.Column(db.Boolean, default=False)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'title': self.title,
+            'content': self.content,
+            'is_member_only': self.is_member_only,
+        }
 
 class ClearSession(Resource):
 
@@ -85,14 +103,31 @@ class CheckSession(Resource):
         return {}, 401
 
 class MemberOnlyIndex(Resource):
-    
     def get(self):
-        pass
+        if not session.get('user_id'):
+            return {'message': 'Unauthorized'}, 401
+
+        # Retrieve and return the JSON data for member-only articles
+        member_only_articles = Article.query.filter_by(is_member_only=True).all()
+        articles_json = [article.to_dict() for article in member_only_articles]
+        return articles_json, 200
 
 class MemberOnlyArticle(Resource):
-    
     def get(self, id):
-        pass
+        if not session.get('user_id'):
+            return {'message': 'Unauthorized'}, 401
+
+
+        article = Article.query.get(id)
+
+        if not article:
+            return {'message': 'Article not found'}, 404
+
+        if not article.is_member_only:
+            return {'message': 'Unauthorized'}, 401
+
+        return article.to_dict(), 200
+
 
 api.add_resource(ClearSession, '/clear', endpoint='clear')
 api.add_resource(IndexArticle, '/articles', endpoint='article_list')
@@ -100,7 +135,7 @@ api.add_resource(ShowArticle, '/articles/<int:id>', endpoint='show_article')
 api.add_resource(Login, '/login', endpoint='login')
 api.add_resource(Logout, '/logout', endpoint='logout')
 api.add_resource(CheckSession, '/check_session', endpoint='check_session')
-api.add_resource(MemberOnlyIndex, '/members_only_articles', endpoint='member_index')
+api.add_resource(MemberOnlyIndex, '/members_only_articles', endpoint='member_only_index')
 api.add_resource(MemberOnlyArticle, '/members_only_articles/<int:id>', endpoint='member_article')
 
 
